@@ -1,4 +1,3 @@
-fastapi>=0.115.0
-innertube>=2.1.19
-pytubefix>=8.0.0
-httpx>=0.27.0
+fastapi
+innertube
+pytubefix
