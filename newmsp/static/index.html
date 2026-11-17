@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InnerTube Opus Audio Streamer</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 680px;
+      margin: 40px auto;
+      padding: 0 16px;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 16px; }
+    .row { display: flex; gap: 8px; margin-bottom: 16px; }
+    input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 1rem;
+    }
+    button {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #3b82f6;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #2563eb; }
+    ul { list-style: none; padding: 0; margin: 0 0 24px 0; }
+    li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      margin-bottom: 8px;
+      background: #1e293b;
+      border-radius: 8px;
+    }
+    .meta { display: flex; flex-direction: column; }
+    .artist { font-size: 0.875rem; color: #94a3b8; }
+    .now-playing { font-size: 0.9rem; color: #38bdf8; margin-bottom: 8px; }
+    audio { width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>InnerTube Opus Audio Streamer</h1>
+
+  <div class="row">
+    <input type="text" id="q" placeholder="Search songs on YouTube Music..." onkeydown="if(event.key==='Enter') searchSongs()" />
+    <button onclick="searchSongs()">Search</button>
+  </div>
+
+  <div class="row">
+    <input type="text" id="directId" placeholder="Or enter YouTube Video ID (e.g. dQw4w9WgXcQ)" />
+    <button onclick="playDirect()">Play ID</button>
+  </div>
+
+  <div id="nowPlaying" class="now-playing"></div>
+  <audio id="player" controls autoplay></audio>
+
+  <ul id="results"></ul>
+
+  <script>
+    async function searchSongs() {
+      const q = document.getElementById('q').value.trim();
+      if (!q) return;
+
+      const list = document.getElementById('results');
+      list.innerHTML = '<li>Searching...</li>';
+
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const songs = await res.json();
+
+      if (!songs.length) {
+        list.innerHTML = '<li>No results found.</li>';
+        return;
+      }
+
+      list.innerHTML = songs.map(s => `
+        <li>
+          <div class="meta">
+            <strong>${escapeHtml(s.title)}</strong>
+            <span class="artist">${escapeHtml(s.artist)}</span>
+          </div>
+          <button onclick="playSong('${s.id}', '${escapeHtml(s.title)} - ${escapeHtml(s.artist)}')">Play</button>
+        </li>
+      `).join('');
+    }
+
+    function playDirect() {
+      const id = document.getElementById('directId').value.trim();
+      if (!id) return;
+      playSong(id, `Video ID: ${id}`);
+    }
+
+    function playSong(videoId, label) {
+      document.getElementById('nowPlaying').textContent = `Streaming Opus: ${label}`;
+      const player = document.getElementById('player');
+      player.src = `/api/stream/${encodeURIComponent(videoId)}`;
+      player.play();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+  </script>
+</body>
+</html>
