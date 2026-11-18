@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/resolve.py": {
+      "maxDuration": 60
+    },
+    "api/stream.go": {
+      "maxDuration": 300
+    }
+  },
+  "rewrites": [
+    { "source": "/api/resolve", "destination": "/api/resolve.py" },
+    { "source": "/api/stream", "destination": "/api/stream.go" }
+  ]
+}

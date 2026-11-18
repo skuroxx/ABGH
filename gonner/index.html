@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonicBridge — Zero-Storage Audio Streamer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, sans-serif; }
+    .glass { background: rgba(24, 24, 27, 0.72); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+  <header class="glass sticky top-0 z-20 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center font-bold text-zinc-950">SB</div>
+      <div>
+        <h1 class="font-bold text-lg tracking-tight">SonicBridge</h1>
+        <p class="text-xs text-zinc-400">ytdl-go &times; spotDL &bull; Ephemeral Streamer</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs font-mono px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+        ZERO-STORAGE MODE &bull; 0 KB ON DISK
+      </span>
+      <button id="purgeBtn" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">
+        Purge Session
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-4xl w-full mx-auto px-6 py-10 flex-1 space-y-8">
+    <section class="glass rounded-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold">Instant Stream Resolver</h2>
+        <span id="statusBadge" class="text-xs font-mono text-zinc-400">Idle</span>
+      </div>
+      <form id="resolveForm" class="flex flex-col sm:flex-row gap-3">
+        <input
+          id="trackUrl"
+          type="url"
+          required
+          placeholder="Paste Spotify track URL or YouTube Music URL..."
+          class="flex-1 bg-zinc-950/90 border border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500"
+        />
+        <button
+          type="submit"
+          class="px-5 py-3 rounded-xl font-medium text-sm bg-gradient-to-r from-cyan-500 to-emerald-500 text-zinc-950 hover:opacity-90 transition"
+        >
+          Extract &amp; Play
+        </button>
+      </form>
+      <div id="pipelineLog" class="text-xs font-mono text-zinc-400 bg-zinc-950/80 border border-zinc-800/80 rounded-xl p-3 hidden"></div>
+    </section>
+
+    <section class="glass rounded-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-base font-semibold">Ephemeral Session Queue</h2>
+        <span id="queueCount" class="text-xs text-zinc-400">0 tracks in RAM</span>
+      </div>
+      <div id="queueList" class="divide-y divide-zinc-800/70 text-sm">
+        <p class="text-zinc-500 py-6 text-center">No tracks resolved yet. Paste a link above to stream directly in memory.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="glass sticky bottom-0 z-20 px-6 py-4">
+    <div class="max-w-4xl mx-auto flex flex-col sm:flex-row items-center gap-4">
+      <div class="flex items-center gap-3 min-w-[200px]">
+        <img id="coverArt" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%2318181b'/%3E%3C/svg%3E" class="w-12 h-12 rounded-lg object-cover bg-zinc-900" alt="Cover" />
+        <div class="truncate">
+          <div id="nowTitle" class="text-sm font-semibold truncate">Nothing Playing</div>
+          <div id="nowArtist" class="text-xs text-zinc-400 truncate">Ready for zero-disk stream</div>
+        </div>
+      </div>
+      <audio id="audioPlayer" controls class="w-full h-10"></audio>
+    </div>
+  </footer>
+
+  <script>
+    const queue = [];
+    const form = document.getElementById('resolveForm');
+    const urlInput = document.getElementById('trackUrl');
+    const statusBadge = document.getElementById('statusBadge');
+    const pipelineLog = document.getElementById('pipelineLog');
+    const queueList = document.getElementById('queueList');
+    const queueCount = document.getElementById('queueCount');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const nowTitle = document.getElementById('nowTitle');
+    const nowArtist = document.getElementById('nowArtist');
+    const coverArt = document.getElementById('coverArt');
+
+    function renderQueue() {
+      queueCount.textContent = `${queue.length} track${queue.length === 1 ? '' : 's'} in RAM`;
+      if (!queue.length) {
+        queueList.innerHTML = '<p class="text-zinc-500 py-6 text-center">No tracks resolved yet. Paste a link above to stream directly in memory.</p>';
+        return;
+      }
+      queueList.innerHTML = queue.map((item, idx) => `
+        <div class="py-3 flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <p class="font-medium truncate">${item.title}</p>
+            <p class="text-xs text-zinc-400 truncate">${item.artist} &bull; ${item.source}</p>
+          </div>
+          <button onclick="playTrack(${idx})" class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-cyan-500 hover:text-zinc-950 text-xs font-medium transition">
+            Stream
+          </button>
+        </div>
+      `).join('');
+    }
+
+    window.playTrack = function(idx) {
+      const item = queue[idx];
+      if (!item) return;
+      nowTitle.textContent = item.title;
+      nowArtist.textContent = item.artist;
+      if (item.cover) coverArt.src = item.cover;
+      audioPlayer.src = `/api/stream?url=${encodeURIComponent(item.stream_url)}`;
+      audioPlayer.play().catch(() => {});
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const targetUrl = urlInput.value.trim();
+      if (!targetUrl) return;
+
+      statusBadge.textContent = 'Resolving in memory...';
+      pipelineLog.classList.remove('hidden');
+      pipelineLog.textContent = '[1/2] Resolving metadata & upstream audio cipher (0 B disk write)...';
+
+      try {
+        const res = await fetch(`/api/resolve?url=${encodeURIComponent(targetUrl)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to resolve stream URL');
+
+        pipelineLog.textContent = '[2/2] Stream URL resolved. Opening HTTP 206 byte-range pipe...';
+        statusBadge.textContent = 'Streaming';
+        queue.unshift(data);
+        renderQueue();
+        playTrack(0);
+        urlInput.value = '';
+      } catch (err) {
+        statusBadge.textContent = 'Error';
+        pipelineLog.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    document.getElementById('purgeBtn').addEventListener('click', () => {
+      queue.length = 0;
+      audioPlayer.pause();
+      audioPlayer.removeAttribute('src');
+      audioPlayer.load();
+      nowTitle.textContent = 'Nothing Playing';
+      nowArtist.textContent = 'Session purged from RAM';
+      statusBadge.textContent = 'Purged';
+      pipelineLog.classList.add('hidden');
+      renderQueue();
+    });
+  </script>
+</body>
+</html>
